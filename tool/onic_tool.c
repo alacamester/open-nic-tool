@@ -52,12 +52,12 @@ void Load_Filter(unsigned int *ptr, char *fname)
 					aflt.flt_ctrl |= FLT_FLAG_IPPROTO;
 				break;
 			case 3: // Port-SRC
-				aflt.l4_src = atoi(pch);
+				aflt.l4_src = ntohs(atoi(pch));
 				if (aflt.l4_src) // valid
 					aflt.flt_ctrl |= FLT_FLAG_L4SRC;
 				break;
 			case 4: // Port-DST
-				aflt.l4_dst = atoi(pch);
+				aflt.l4_dst = ntohs(atoi(pch));
 				if (aflt.l4_dst) // valid
 					aflt.flt_ctrl |= FLT_FLAG_L4DST;
 				break;

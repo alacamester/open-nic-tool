@@ -1,9 +1,11 @@
 
 #define MAP_SIZE 4*1024*1024
 
-#define REG_CTRL			0
-#define REG_FLT_A			1
-#define REG_FLT_B			2
+#define REG_BASE_ADDR			(0x200000/sizeof(unsigned int))
+
+#define REG_CTRL			(REG_BASE_ADDR+0)
+#define REG_FLT_A			(REG_BASE_ADDR+1)
+#define REG_FLT_B			(REG_BASE_ADDR+2)
 
 #define FLT_FIELDS			5
 #define FLT_FLAG_IPSRC		0x01
