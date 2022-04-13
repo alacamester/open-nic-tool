@@ -8,11 +8,47 @@
 #include <netinet/in.h>
 #include "onic_tool.h"
 
+void Usage(char *fname)
+{
+
+printf("onic_tool %s by Laca\n", VERSION);
+printf("Usage: %s <device> <switch> <value(s)>\n", fname);
+printf(" switches:\n");
+printf(" r <register> : read register address (hex)\n");
+printf(" w <register> <value> : write value to register address(hex)\n");
+printf(" f <filename> : initialize filter with csv file content\n");
+printf(" c : clear filters (drop all packets)\n");
+
+}
+
+
+void Clear_Filters(unsigned int *ptr)
+{
+int i;
+onic_filter aflt = {0,};
+
+aflt.flt_ctrl = FLT_FLAG_ALL; // match for all
+
+for (i=0;i<FILTER_COUNT;i++)
+{
+    aflt.flt_num = i;
+    for (int z = 0; z < sizeof(onic_filter)/sizeof(unsigned int); z++)
+    {
+//	printf("%X\n", *((unsigned int *)&aflt + z));
+	ptr[REG_FLT_A] = *((unsigned int *)&aflt + z);
+	ptr[REG_FLT_B] = *((unsigned int *)&aflt + z);
+    }
+
+}
+printf("All filters cleared!\n");
+}
+
 void Load_Filter(unsigned int *ptr, char *fname)
 {
 	FILE *fin;
 	char *line = NULL;
 	char *pch;
+	char *pmask;
 	int i;
 	size_t len = 0;
 	ssize_t nread;
@@ -31,32 +67,53 @@ void Load_Filter(unsigned int *ptr, char *fname)
 	{
 		pch = strtok(line, " ,");
 		if (pch[0] == '\n' || pch[0] == '\r') break;
+		if (pch[0] == '#') continue; // skip comment
 		aflt.flt_ctrl = 0;
 		for (i = 0; i < FLT_FIELDS; i++)
 		{
 			switch (i)
 			{
-			case 0: // IPv4-SRC
+			case 0:
+				if (pch[0] == 'd' || pch[0] == 'D') // drop
+					aflt.flt_ctrl |= FLT_FLAG_DROP;
+				break;
+			case 1: // IPv4-SRC
+				pmask = strchr(pch, '/');
+				if (pmask)
+				{
+					aflt.mask_src = atoi(pmask+1)-1;
+					*pmask = 0;
+				}
+				else
+					aflt.mask_src = 31; // single IP
 				aflt.ip_src = inet_addr(pch);
 				if (aflt.ip_src) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPSRC;
 				break;
-			case 1: // IPv4-DST
+			case 2: // IPv4-DST
+				pmask = strchr(pch, '/');
+				if (pmask)
+				{
+					aflt.mask_dst = atoi(pmask+1)-1;
+					*pmask = 0;
+				}
+				else
+					aflt.mask_dst = 31; // single IP
 				aflt.ip_dst = inet_addr(pch);
 				if (aflt.ip_dst) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPDST;
 				break;
-			case 2: // IP-protocol
+			case 3: // IP-protocol
 				aflt.ip_proto = atoi(pch);
 				if (aflt.ip_proto) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPPROTO;
 				break;
-			case 3: // Port-SRC
+			case 4: // Port-SRC
 				aflt.l4_src = ntohs(atoi(pch));
 				if (aflt.l4_src) // valid
 					aflt.flt_ctrl |= FLT_FLAG_L4SRC;
 				break;
-			case 4: // Port-DST
+			case 5: // Port-DST
 				aflt.l4_dst = ntohs(atoi(pch));
 				if (aflt.l4_dst) // valid
 					aflt.flt_ctrl |= FLT_FLAG_L4DST;
@@ -98,6 +155,12 @@ int fd;
 unsigned int areg;
 char *ptr;
 
+if (argc < 3)
+{
+    Usage(argv[0]);
+    return 1;
+}
+
 fd = open(argv[1], O_RDWR);
 
 if (fd < 0)
@@ -130,7 +193,12 @@ case 'f':
 	Load_Filter((unsigned int *)ptr, argv[3]);
 	break;
 
+case 'c':
+	Clear_Filters((unsigned int *)ptr);
+	break;
+
 default:
+	Usage(argv[0]);
 	break;
 }
 
