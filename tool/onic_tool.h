@@ -1,5 +1,5 @@
 
-#define VERSION "v0.2"
+#define VERSION "v0.3"
 
 #define MAP_SIZE 4*1024*1024
 
@@ -9,7 +9,7 @@
 #define REG_FLT_A			(REG_BASE_ADDR+1)
 #define REG_FLT_B			(REG_BASE_ADDR+2)
 
-#define FLT_FIELDS			6
+#define FLT_FIELDS			7
 #define FLT_FLAG_IPSRC		0x01
 #define FLT_FLAG_IPDST		0x02
 #define FLT_FLAG_IPPROTO	0x04

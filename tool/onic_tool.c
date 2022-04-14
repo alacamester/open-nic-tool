@@ -21,6 +21,8 @@ printf(" c : clear filters (drop all packets)\n");
 
 }
 
+const char *ifs[] = {"A", "B", "A+B", "A+swap(B)", "swap(A)+B"};
+
 
 void Clear_Filters(unsigned int *ptr)
 {
@@ -50,9 +52,10 @@ void Load_Filter(unsigned int *ptr, char *fname)
 	char *pch;
 	char *pmask;
 	int i;
+	unsigned int iface;
 	size_t len = 0;
 	ssize_t nread;
-	onic_filter aflt;
+	onic_filter aflt, bflt;
 
 	fin = fopen(fname, "r");
 	if (!fin)
@@ -73,11 +76,14 @@ void Load_Filter(unsigned int *ptr, char *fname)
 		{
 			switch (i)
 			{
-			case 0:
+			case 0: // iface
+				iface = atoi(pch);
+				break;
+			case 1:
 				if (pch[0] == 'd' || pch[0] == 'D') // drop
 					aflt.flt_ctrl |= FLT_FLAG_DROP;
 				break;
-			case 1: // IPv4-SRC
+			case 2: // IPv4-SRC
 				pmask = strchr(pch, '/');
 				if (pmask)
 				{
@@ -90,7 +96,7 @@ void Load_Filter(unsigned int *ptr, char *fname)
 				if (aflt.ip_src) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPSRC;
 				break;
-			case 2: // IPv4-DST
+			case 3: // IPv4-DST
 				pmask = strchr(pch, '/');
 				if (pmask)
 				{
@@ -103,17 +109,17 @@ void Load_Filter(unsigned int *ptr, char *fname)
 				if (aflt.ip_dst) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPDST;
 				break;
-			case 3: // IP-protocol
+			case 4: // IP-protocol
 				aflt.ip_proto = atoi(pch);
 				if (aflt.ip_proto) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPPROTO;
 				break;
-			case 4: // Port-SRC
+			case 5: // Port-SRC
 				aflt.l4_src = ntohs(atoi(pch));
 				if (aflt.l4_src) // valid
 					aflt.flt_ctrl |= FLT_FLAG_L4SRC;
 				break;
-			case 5: // Port-DST
+			case 6: // Port-DST
 				aflt.l4_dst = ntohs(atoi(pch));
 				if (aflt.l4_dst) // valid
 					aflt.flt_ctrl |= FLT_FLAG_L4DST;
@@ -123,8 +129,10 @@ void Load_Filter(unsigned int *ptr, char *fname)
 			}
 			pch = strtok(NULL, " ,");
 		}
-		if (i == FLT_FIELDS)
+		if (i == FLT_FIELDS && iface < 5)
 		{
+			printf("--- IFs: %s --------\n", ifs[iface]);
+
 			printf("Uploading filter: %d\n", aflt.flt_num);
 			printf("CTRL: %X\n", aflt.flt_ctrl);
 			printf("IP-SRC: %X\n", aflt.ip_src);
@@ -132,13 +140,55 @@ void Load_Filter(unsigned int *ptr, char *fname)
 			printf("IP-PROTO: %X\n", aflt.ip_proto);
 			printf("L4-SRC: %X\n", aflt.l4_src);
 			printf("L4-DST: %X\n", aflt.l4_dst);
-			printf("----------\n");
+
+			switch (iface)
+			{
+			    case 0: // iface A
+			    case 1: // iface B
+			    case 2: // iface A+B
+				break;
+			    case 3: // iface A, src/dst swap for B
+			    case 4: // iface B, src/dst swap for A
+				bflt.ip_src = aflt.ip_dst;
+				bflt.ip_dst = aflt.ip_src;
+				bflt.mask_src = aflt.mask_dst;
+				bflt.mask_dst = aflt.mask_src;
+				bflt.l4_src = aflt.l4_dst;
+				bflt.l4_dst = aflt.l4_src;
+				bflt.flt_ctrl = aflt.flt_ctrl;
+				bflt.ip_proto = aflt.ip_proto;
+				bflt.flt_num = aflt.flt_num;
+				break;
+			    default:
+				break;
+			}
 
 			for (int z = 0; z < sizeof(onic_filter)/sizeof(unsigned int); z++)
 			{
 //				printf("%X\n", *((unsigned int *)&aflt + z));
-				ptr[REG_FLT_A] = *((unsigned int *)&aflt + z);
-				ptr[REG_FLT_B] = *((unsigned int *)&aflt + z);
+				switch (iface)
+				{
+				    case 0:
+					ptr[REG_FLT_A] = *((unsigned int *)&aflt + z);
+					break;
+				    case 1:
+					ptr[REG_FLT_B] = *((unsigned int *)&aflt + z);
+					break;
+				    case 2:
+					ptr[REG_FLT_A] = *((unsigned int *)&aflt + z);
+					ptr[REG_FLT_B] = *((unsigned int *)&aflt + z);
+					break;
+				    case 3:
+					ptr[REG_FLT_A] = *((unsigned int *)&aflt + z);
+					ptr[REG_FLT_B] = *((unsigned int *)&bflt + z);
+					break;
+				    case 4:
+					ptr[REG_FLT_A] = *((unsigned int *)&bflt + z);
+					ptr[REG_FLT_B] = *((unsigned int *)&aflt + z);
+					break;
+				    default:
+					break;
+				}
 			}
 			aflt.flt_num++;
 		}
