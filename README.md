@@ -20,11 +20,11 @@ This tool is intended to configure onic firmware-extensions. (needs open-nic-dri
 CSV file format:
 <[0..4]>, <Pass/Drop>, <Src_IP/Netmask>, <Dst_IP/Netmask>, <IP_protocol>, <Src_Port>, <Dst_port>
 - [0..4] : Upload to
- -- 0 = Iface A only
- -- 1 = Iface B only
- -- 2 = Iface A & B
- -- 3 = Iface A & swap IP+port for B
- -- 4 = swap IP+port for A & B
+ * 0 = Iface A only
+ * 1 = Iface B only
+ * 2 = Iface A & B
+ * 3 = Iface A & swap IP+port for B
+ * 4 = swap IP+port for A & B
 - Pass/Drop : pass or drop filter-rule
 - example: 
   1, P, 10.0.0.112, 10.0.0.0/16, 17, 0, 0
