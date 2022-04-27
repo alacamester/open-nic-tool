@@ -27,14 +27,14 @@ const char *ifs[] = {"A", "B", "A+B", "A+swap(B)", "swap(A)+B"};
 void Clear_Filters(unsigned int *ptr)
 {
 int i;
-onic_filter aflt = {0,};
+onic_filter_base aflt = {0,};
 
 aflt.flt_ctrl = FLT_FLAG_ALL; // match for all
 
 for (i=0;i<FILTER_COUNT;i++)
 {
     aflt.flt_num = i;
-    for (int z = 0; z < sizeof(onic_filter)/sizeof(unsigned int); z++)
+    for (int z = 0; z < sizeof(aflt)/sizeof(unsigned int); z++)
     {
 //	printf("%X\n", *((unsigned int *)&aflt + z));
 	ptr[REG_FLT_A] = *((unsigned int *)&aflt + z);
@@ -45,17 +45,50 @@ for (i=0;i<FILTER_COUNT;i++)
 printf("All filters cleared!\n");
 }
 
+char GetIPAddress(char *pch, onic_aip *pip)
+{
+	char *pmask;
+	pmask = strchr(pch, '/');
+	if (pmask)
+	{
+		pip->mask = atoi(pmask + 1) - 1;
+		*pmask = 0;
+	}
+	else
+		pip->mask = 0; 
+
+	memset(&pip->ip, 0x00, sizeof(pip->ip));
+	if (inet_pton(AF_INET, pch, &pip->ip)) // is IPv4
+	{
+		pip->type = TYPE_IPv4;
+		if (!pip->mask)
+			pip->mask = 31;
+	}
+	else if (inet_pton(AF_INET6, pch, &pip->ip)) // is IPv6
+	{
+		pip->type = TYPE_IPv6;
+		pip->mask = 127;
+	}
+	else
+	{
+		pip->type = TYPE_NONE;
+		return 0;
+	}
+	return 1;
+}
+
 void Load_Filter(unsigned int *ptr, char *fname)
 {
 	FILE *fin;
 	char *line = NULL;
 	char *pch;
-	char *pmask;
 	int i;
 	unsigned int iface;
 	size_t len = 0;
 	ssize_t nread;
-	onic_filter aflt, bflt;
+	onic_aip aip, bip;
+	onic_filter aflt = {0,};
+	onic_filter bflt = {0,};
 
 	fin = fopen(fname, "r");
 	if (!fin)
@@ -83,30 +116,12 @@ void Load_Filter(unsigned int *ptr, char *fname)
 				if (pch[0] == 'd' || pch[0] == 'D') // drop
 					aflt.flt_ctrl |= FLT_FLAG_DROP;
 				break;
-			case 2: // IPv4-SRC
-				pmask = strchr(pch, '/');
-				if (pmask)
-				{
-					aflt.mask_src = atoi(pmask+1)-1;
-					*pmask = 0;
-				}
-				else
-					aflt.mask_src = 31; // single IP
-				aflt.ip_src = inet_addr(pch);
-				if (aflt.ip_src) // valid
+			case 2: // IP-SRC
+				if (GetIPAddress(pch, &aip) && aip.type) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPSRC;
 				break;
-			case 3: // IPv4-DST
-				pmask = strchr(pch, '/');
-				if (pmask)
-				{
-					aflt.mask_dst = atoi(pmask+1)-1;
-					*pmask = 0;
-				}
-				else
-					aflt.mask_dst = 31; // single IP
-				aflt.ip_dst = inet_addr(pch);
-				if (aflt.ip_dst) // valid
+			case 3: // IP-DST
+				if (GetIPAddress(pch, &bip) && bip.type) // valid
 					aflt.flt_ctrl |= FLT_FLAG_IPDST;
 				break;
 			case 4: // IP-protocol
@@ -131,15 +146,17 @@ void Load_Filter(unsigned int *ptr, char *fname)
 		}
 		if (i == FLT_FIELDS && iface < 5)
 		{
-			printf("--- IFs: %s --------\n", ifs[iface]);
+			if (aip.type == TYPE_IPv6 || bip.type == TYPE_IPv6)
+				aflt.ipv6 = 1;
+			else
+				aflt.ipv6 = 0;
 
-			printf("Uploading filter: %d\n", aflt.flt_num);
-			printf("CTRL: %X\n", aflt.flt_ctrl);
-			printf("IP-SRC: %X\n", aflt.ip_src);
-			printf("IP-DST: %X\n", aflt.ip_dst);
-			printf("IP-PROTO: %X\n", aflt.ip_proto);
-			printf("L4-SRC: %X\n", aflt.l4_src);
-			printf("L4-DST: %X\n", aflt.l4_dst);
+			memcpy(aflt.ip_src, aip.ip, sizeof(aip.ip));
+			memcpy(aflt.ip_dst, bip.ip, sizeof(bip.ip));
+			aflt.mask_src = aip.mask;
+			aflt.mask_dst = bip.mask;
+
+			printf("Uploading filter: %d to IFs: %s\n", aflt.flt_num, ifs[iface]);
 
 			switch (iface)
 			{
@@ -149,10 +166,11 @@ void Load_Filter(unsigned int *ptr, char *fname)
 				break;
 			    case 3: // iface A, src/dst swap for B
 			    case 4: // iface B, src/dst swap for A
-				bflt.ip_src = aflt.ip_dst;
-				bflt.ip_dst = aflt.ip_src;
-				bflt.mask_src = aflt.mask_dst;
-				bflt.mask_dst = aflt.mask_src;
+				memcpy(bflt.ip_src, bip.ip, sizeof(bip.ip));
+				memcpy(bflt.ip_dst, aip.ip, sizeof(aip.ip));
+				bflt.mask_src = bip.mask;
+				bflt.mask_dst = aip.mask;
+				bflt.ipv6 = aflt.ipv6;
 				bflt.l4_src = aflt.l4_dst;
 				bflt.l4_dst = aflt.l4_src;
 				bflt.flt_ctrl = aflt.flt_ctrl;
@@ -165,7 +183,12 @@ void Load_Filter(unsigned int *ptr, char *fname)
 
 			for (int z = 0; z < sizeof(onic_filter)/sizeof(unsigned int); z++)
 			{
-//				printf("%X\n", *((unsigned int *)&aflt + z));
+				if (!aflt.ipv6) // IPv4, skip IPv6-prefix parts
+				{
+					if (z > 1 && z <= 4) continue; // skip SRC
+					if (z > 5 && z <= 8) continue; // skip DST
+				}
+//DEBUG				printf("%.8X\n", *((unsigned int *)&aflt + z));
 				switch (iface)
 				{
 				    case 0:
