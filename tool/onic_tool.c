@@ -62,12 +62,15 @@ char GetIPAddress(char *pch, onic_aip *pip)
 	{
 		pip->type = TYPE_IPv4;
 		if (!pip->mask)
-			pip->mask = 31;
+			pip->mask = 127;
+		else
+			pip->mask += 96;
 	}
 	else if (inet_pton(AF_INET6, pch, &pip->ip)) // is IPv6
 	{
 		pip->type = TYPE_IPv6;
-		pip->mask = 127;
+		if (!pip->mask)
+		    pip->mask = 127;
 	}
 	else
 	{
@@ -188,7 +191,7 @@ void Load_Filter(unsigned int *ptr, char *fname)
 					if (z > 1 && z <= 4) continue; // skip SRC
 					if (z > 5 && z <= 8) continue; // skip DST
 				}
-//DEBUG				printf("%.8X\n", *((unsigned int *)&aflt + z));
+//				printf("%.8X\n", *((unsigned int *)&aflt + z));
 				switch (iface)
 				{
 				    case 0:
